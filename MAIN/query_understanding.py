@@ -40,9 +40,11 @@ def parse_user_query(query):
     - **地理距離 (`geo_distance`)** 需轉換為標準格式（例如："5km"、"10km"）。
     - **地點標籤 (`tags`)** 如"適合兒童"、"無障礙停車場"、"洗手間"、Wi-Fi"。
     - **營業時間 (`opening_hours`)** 需轉換為標準格式（例如："週二","下午"）。
-    - **語意關鍵詞 (`semantic_keywords`)** 若存在，請保留原文。
+    - **門票資訊 (`entrance_fee`): 門票、免費等(例如 : "200")
+    - **語意關鍵詞 (`semantic_keywords`)** 對於地點的描述或形容詞，若存在，請保留原文。
     
     **"gmap_location"和"address"不同時出現在同一輸出，沒有明確地點才選擇"address"
+    **僅提取上述內容，其餘多於字詞去除
 
     **範例輸出 (請確保 JSON 格式正確，不要包裹 Markdown 標記)**：
     {{

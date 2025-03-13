@@ -3,76 +3,228 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>檢索與推薦</title>
+    <title>檢索與推薦系統</title>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <style>
-        body { font-family: Arial, sans-serif; padding: 20px; }
-        .container { max-width: 600px; margin: auto; }
-        .result { margin-top: 20px; padding: 10px; border: 1px solid #ddd; background-color: #f9f9f9; }
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #f9f9f9;
+            color: #333;
+            text-align: center;
+            padding: 40px;
+        }
+        h2 {
+            font-size: 28px;
+            margin-bottom: 20px;
+            font-weight: bold;
+            color: #222;
+        }
+        input {
+            width: 80%;
+            max-width: 500px;
+            padding: 12px;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 25px;
+            outline: none;
+            text-align: center;
+            transition: all 0.3s;
+        }
+        input:focus {
+            border-color: #007BFF;
+            box-shadow: 0px 0px 8px rgba(0, 123, 255, 0.3);
+        }
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            color: white;
+            background-color: #007BFF;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            margin-left: 10px;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        #searchResults {
+            margin-top: 30px;
+            text-align: left;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0px 0px 15px rgba(0, 0, 0, 0.1);
+        }
+        h3 {
+            font-size: 20px;
+            margin-bottom: 10px;
+            border-bottom: 2px solid #007BFF;
+            padding-bottom: 5px;
+            color: #007BFF;
+        }
+        ul {
+            list-style-type: none;
+            padding: 0;
+        }
+        li {
+            padding: 8px 0;
+            border-bottom: 1px solid #ddd;
+        }
+        li:last-child {
+            border-bottom: none;
+        }
+        .loading {
+            font-size: 14px;
+            color: #007BFF;
+            font-weight: bold;
+            margin-top: 10px;
+        }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <h2>檢索與推薦</h2>
-    <input type="text" id="query" placeholder="輸入您的旅遊查詢..." style="width: 80%;">
-    <button id="searchBtn">搜尋</button>
+<h2>檢索與推薦系統</h2>
+<input type="text" id="queryInput" placeholder="請輸入查詢內容">
+<button onclick="search()">🔍 搜尋</button>
 
-    <div class="result" id="resultContainer"></div>
+<div id="searchResults" style="display: none;">
+    <h3>🔎 Elasticsearch 結果：</h3>
+    <p id="searchConditions"></p>
+    <ul id="elasticsearchResults"></ul>
+
+    <h3 id="faissHeader" style="display: none;">🔍 FAISS 結果：</h3>
+    <p id="faissStatus" class="loading" style="display: none;">正在執行語意檢索...</p>
+    <ul id="faissResults"></ul>
 </div>
 
 <script>
-    $(document).ready(function () {
-        $("#searchBtn").click(function () {
-            var query = $("#query").val();
-            $("#resultContainer").html("正在搜尋...");
+    function search() {
+    let userQuery = $("#queryInput").val().trim();
+    if (!userQuery) {
+        alert("請輸入查詢內容！");
+        return;
+    }
 
-            $.ajax({
-                url: "/search",
-                type: "POST",
-                contentType: "application/json",
-                data: JSON.stringify({ query: query }),
-                success: function (data) {
-                    var query_id = data.query_id;
-                    var resultHtml = "<h3>Elasticsearch 結果：</h3>";
+    // **清空與初始化結果**
+    $("#searchResults").show();
+    $("#elasticsearchResults").empty();
+    $("#faissResults").empty();
+    $("#faissHeader").hide();
+    $("#faissStatus").hide();
 
-                    if (data.elasticsearch_results) {
-                        data.elasticsearch_results.forEach(function (item) {
-                            resultHtml += "<p><b>地點 ID:</b> " + item.location_id + "</p>";
-                        });
-                    }
+    $.ajax({
+        url: "/search",
+        type: "POST",
+        contentType: "application/json",
+        data: JSON.stringify({ query: userQuery }),
+        success: function (data) {
+            $("#elasticsearchResults").empty();
+            $("#searchConditions").empty();
 
-                    resultHtml += "<h3>FAISS 結果：</h3>";
-                    resultHtml += "<div id='faissResults'>正在載入 FAISS 結果...</div>";
+            // **確保 API 回傳的結果正確**
+            if (!data.elasticsearch_results) {
+                $("#elasticsearchResults").append("<li>❌ 查詢發生錯誤，請稍後再試。</li>");
+                return;
+            }
 
-                    $("#resultContainer").html(resultHtml);
+            if (data.elasticsearch_results.length > 0) {
+                // **顯示搜尋條件**
+                let conditions = [];
+                let queryInfo = data.query_info || {};  // 確保 query_info 存在
+                
+                if (queryInfo.address) conditions.push(`📍 地區檢索: ${queryInfo.address}`);
+                if (queryInfo.gmap_location) conditions.push(`📍 地點檢索: ${queryInfo.gmap_location}`);
+                if (queryInfo.class) conditions.push(`🏛 類型檢索: ${queryInfo.class}`);
+                if (queryInfo.geo_distance) conditions.push(`📏 鄰近地區檢索: ${queryInfo.geo_distance}`);
+                if (queryInfo.entrance_fee) conditions.push(`🎟 入場費用檢索: ${queryInfo.entrance_fee}`);
+                if (queryInfo.opening_hours) conditions.push(`⏰ 營業時間檢索: ${queryInfo.opening_hours}`);
+                if (queryInfo.tags) conditions.push(`🏷 標籤檢索: ${queryInfo.tags}`);
+                
+                $("#searchConditions").html(conditions.join(" | "));
 
-                    // 開始輪詢 FAISS 結果
-                    checkFaissResult(query_id);
-                },
-                error: function (xhr) {
-                    $("#resultContainer").html("<p style='color: red;'>發生錯誤：" + xhr.responseText + "</p>");
-                }
-            });
-        });
+                // **顯示 Elasticsearch 結果**
+                data.elasticsearch_results.forEach(function (item) {
+                    let locationName = item.gmap_location || "未知地點";
+                    let address = item.address || "未知地址";
+                    let summary = item.summary_2 || "無詳細描述";
 
-        function checkFaissResult(query_id) {
+                    $("#elasticsearchResults").append(
+                        `<li><b>📍 ${locationName}</b> - ${address}<br>📖 ${summary}</li>`
+                    );
+                });
+            } else {
+                $("#elasticsearchResults").append("<li>❌ 沒有找到相關地點</li>");
+            }
+
+            // **如果有 `query_id`，執行 FAISS 查詢**
+            if (data.query_id && data.query_info.semantic_keywords) {
+                $("#faissStatus").show().text(`正在執行語意檢索 - 關鍵字: ${data.query_info.semantic_keywords}`);
+                checkFaissResult(data.query_id);
+            }
+        },
+        error: function (xhr) {
+            alert("發生錯誤：" + xhr.responseText);
+        }
+    });
+}
+
+function checkFaissResult(query_id) {
     $.ajax({
         url: "/faiss_result/" + query_id,
         type: "GET",
         success: function (data) {
             if (data.status === "processing") {
-                $("#faissResults").html("<p>FAISS 正在處理，請稍候...</p>");
-                setTimeout(function () { checkFaissResult(query_id); }, 3000);  // 3 秒後再查詢
+                setTimeout(function () { checkFaissResult(query_id); }, 3000);
             } else if (data.status === "not_found") {
-                $("#faissResults").html("<p style='color: red;'>❌ FAISS 查無結果</p>");
+                $("#faissStatus").hide();
             } else {
-                var faissHtml = "<ul>";
+                $("#faissStatus").hide();
+                $("#faissHeader").show();
+                $("#faissResults").empty();
+
+                let groupedResults = {};
+
+                // **將 FAISS 結果依 `gmap_location` 分組**
                 data.faiss_results.forEach(function (item) {
-                    faissHtml += "<li><b>地點:</b> " + item.gmap_location + " | <b>評論:</b> " + item.comments + "</li>";
+                    if (!groupedResults[item.gmap_location]) {
+                        groupedResults[item.gmap_location] = {
+                            address: item.address || "未知地址",
+                            summary_2: item.summary_2 || "無詳細描述",
+                            comments: []
+                        };
+                    }
+
+                    // **如果 `comments` 是陣列，推入所有評論**
+                    if (Array.isArray(item.comments)) {
+                        item.comments.forEach(function (comment) {
+                            if (groupedResults[item.gmap_location].comments.length < 5) {
+                                groupedResults[item.gmap_location].comments.push(comment);
+                            }
+                        });
+                    } else {
+                        // **如果 `comments` 不是陣列，當作單一評論**
+                        if (groupedResults[item.gmap_location].comments.length < 5) {
+                            groupedResults[item.gmap_location].comments.push(item.comments);
+                        }
+                    }
                 });
-                faissHtml += "</ul>";
-                $("#faissResults").html(faissHtml);
+
+                // **渲染 FAISS 結果**
+                Object.keys(groupedResults).forEach(function (location) {
+                    let resultText = `<li><b>📍 ${location}</b> - ${groupedResults[location].address}<br>
+                                      📖 ${groupedResults[location].summary_2}</b><ul>`;
+
+                    groupedResults[location].comments.forEach(function (comment) {
+                        resultText += `<li style="margin-left: 15px;">💬 <pre style="white-space: pre-wrap; font-size: 14px;">${comment}</pre></li>`;
+                    });
+
+                    resultText += "</ul></li>";
+                    $("#faissResults").append(resultText);
+                });
             }
         },
         error: function (xhr) {
@@ -80,7 +232,7 @@
         }
     });
 }
-    });
+
 </script>
 
 </body>

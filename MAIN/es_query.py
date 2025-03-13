@@ -45,7 +45,7 @@ def search_elasticsearch(parsed_query):
         )
     if "entrance_fee" in parsed_query:
         es_query["query"]["bool"]["must"].append(
-            {"match": {"entrance_fee": {"query": parsed_query["entrance_fee"]}}}
+            {"range": {"entrance_fee": {"lt": parsed_query["entrance_fee"]}}}
         )
 
     try:
