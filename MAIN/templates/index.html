@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>檢索與推薦</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .container { max-width: 600px; margin: auto; }
+        .result { margin-top: 20px; padding: 10px; border: 1px solid #ddd; background-color: #f9f9f9; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>檢索與推薦</h2>
+    <input type="text" id="query" placeholder="輸入您的旅遊查詢..." style="width: 80%;">
+    <button id="searchBtn">搜尋</button>
+
+    <div class="result" id="resultContainer"></div>
+</div>
+
+<script>
+    $(document).ready(function () {
+        $("#searchBtn").click(function () {
+            var query = $("#query").val();
+            $("#resultContainer").html("正在搜尋...");
+
+            $.ajax({
+                url: "/search",
+                type: "POST",
+                contentType: "application/json",
+                data: JSON.stringify({ query: query }),
+                success: function (data) {
+                    var query_id = data.query_id;
+                    var resultHtml = "<h3>Elasticsearch 結果：</h3>";
+
+                    if (data.elasticsearch_results) {
+                        data.elasticsearch_results.forEach(function (item) {
+                            resultHtml += "<p><b>地點 ID:</b> " + item.location_id + "</p>";
+                        });
+                    }
+
+                    resultHtml += "<h3>FAISS 結果：</h3>";
+                    resultHtml += "<div id='faissResults'>正在載入 FAISS 結果...</div>";
+
+                    $("#resultContainer").html(resultHtml);
+
+                    // 開始輪詢 FAISS 結果
+                    checkFaissResult(query_id);
+                },
+                error: function (xhr) {
+                    $("#resultContainer").html("<p style='color: red;'>發生錯誤：" + xhr.responseText + "</p>");
+                }
+            });
+        });
+
+        function checkFaissResult(query_id) {
+    $.ajax({
+        url: "/faiss_result/" + query_id,
+        type: "GET",
+        success: function (data) {
+            if (data.status === "processing") {
+                $("#faissResults").html("<p>FAISS 正在處理，請稍候...</p>");
+                setTimeout(function () { checkFaissResult(query_id); }, 3000);  // 3 秒後再查詢
+            } else if (data.status === "not_found") {
+                $("#faissResults").html("<p style='color: red;'>❌ FAISS 查無結果</p>");
+            } else {
+                var faissHtml = "<ul>";
+                data.faiss_results.forEach(function (item) {
+                    faissHtml += "<li><b>地點:</b> " + item.gmap_location + " | <b>評論:</b> " + item.comments + "</li>";
+                });
+                faissHtml += "</ul>";
+                $("#faissResults").html(faissHtml);
+            }
+        },
+        error: function (xhr) {
+            $("#faissResults").html("<p style='color: red;'>發生錯誤：" + xhr.responseText + "</p>");
+        }
+    });
+}
+    });
+</script>
+
+</body>
+</html>
